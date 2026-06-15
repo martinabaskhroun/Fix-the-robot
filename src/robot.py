@@ -27,7 +27,7 @@ ROBO_SYS_CRITICAL_TORQUE_WARNING_THRESHOLD = 50.0
 ROBO_SYS_ROUNDING_PRECISION = 2
 
 
-def _stage_one_kinematics(joint_type, payload_kg):
+def stage_one_kinematics(joint_type, payload_kg):
     if joint_type == "Revolute":
         if payload_kg > ROBO_SYS_REVOLUTE_LOAD_THRESHOLD:
             raw_torque = (
@@ -61,7 +61,7 @@ def _stage_one_kinematics(joint_type, payload_kg):
     return raw_torque
 
 
-def _stage_two_signal_overrides(raw_torque, override_signal):
+def stage_two_signal_overrides(raw_torque, override_signal):
     if override_signal == "EMERGENCY_BRAKE":
         raw_torque *= ROBO_SYS_EMERGENCY_BRAKE_MULTIPLIER
     elif override_signal == "SAFE_MODE":
@@ -70,7 +70,7 @@ def _stage_two_signal_overrides(raw_torque, override_signal):
     return raw_torque
 
 
-def _stage_three_power_profile(raw_torque, battery_level):
+def stage_three_power_profile(raw_torque, battery_level):
     if battery_level < ROBO_SYS_CRITICAL_BATTERY_THRESHOLD:
         raw_torque *= ROBO_SYS_CRITICAL_BATTERY_TORQUE_MULTIPLIER
 
@@ -85,6 +85,30 @@ def _stage_three_power_profile(raw_torque, battery_level):
     return raw_torque
 
 
+def torque_engine(
+    joint_type,
+    payload_kg,
+    override_signal,
+    battery_level
+):
+    raw_torque = stage_one_kinematics(
+        joint_type,
+        payload_kg
+    )
+
+    raw_torque = stage_two_signal_overrides(
+        raw_torque,
+        override_signal
+    )
+
+    raw_torque = stage_three_power_profile(
+        raw_torque,
+        battery_level
+    )
+
+    return raw_torque
+
+
 def calculate_actuator_torque(
     joint_type,
     payload_kg,
@@ -92,18 +116,10 @@ def calculate_actuator_torque(
     override_signal,
     battery_level
 ):
-    raw_torque = _stage_one_kinematics(
+    raw_torque = torque_engine(
         joint_type,
-        payload_kg
-    )
-
-    raw_torque = _stage_two_signal_overrides(
-        raw_torque,
-        override_signal
-    )
-
-    raw_torque = _stage_three_power_profile(
-        raw_torque,
+        payload_kg,
+        override_signal,
         battery_level
     )
 
@@ -117,13 +133,14 @@ def log_telemetry(
     override_signal,
     battery_level
 ):
-    t = calculate_actuator_torque(
+    raw_torque = torque_engine(
         joint_type,
         payload_kg,
-        current_velocity,
         override_signal,
         battery_level
     )
+
+    t = round(raw_torque, ROBO_SYS_ROUNDING_PRECISION)
 
     print("--- ROBOT SUB SYSTEM TELEMETRY ---")
     print(f"Joint Type: {joint_type}")
